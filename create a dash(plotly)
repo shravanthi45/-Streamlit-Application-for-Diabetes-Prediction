@@ -1,0 +1,128 @@
+from dash import Dash, html, dcc, Input, Output, State
+import plotly.express as px
+import pandas as pd
+import io
+import base64
+
+app = Dash(__name__)
+app.title = "Diabetes Prediction Dashboard"
+
+app.layout = html.Div([
+    html.H1("🩺 Diabetes Prediction Dashboard", style={'textAlign': 'center'}),
+
+    html.Div([
+        html.H3("Upload your CSV File:"),
+        dcc.Upload(
+            id='upload-data',
+            children=html.Div(['Drag and Drop or ', html.A('Select a CSV File')]),
+            style={
+                'width': '100%',
+                'height': '60px',
+                'lineHeight': '60px',
+                'borderWidth': '2px',
+                'borderStyle': 'dashed',
+                'borderRadius': '10px',
+                'textAlign': 'center',
+                'margin': '10px'
+            },
+            multiple=False
+        ),
+    ]),
+
+    html.Div(id='file-info', style={'textAlign': 'center', 'color': 'green', 'margin': '10px'}),
+    html.Div(id='data-preview'),
+
+    html.Div([
+        html.Label("Select X-axis:"),
+        dcc.Dropdown(id='x-axis', placeholder='Select X-axis'),
+        html.Label("Select Y-axis:"),
+        dcc.Dropdown(id='y-axis', placeholder='Select Y-axis'),
+        html.Label("Select Chart Type:"),
+        dcc.Dropdown(
+            id='chart-type',
+            options=[
+                {'label': 'Line Chart', 'value': 'line'},
+                {'label': 'Bar Chart', 'value': 'bar'},
+                {'label': 'Scatter Plot', 'value': 'scatter'},
+                {'label': 'Histogram', 'value': 'hist'},
+                {'label': 'Box Plot (Remove Outliers)', 'value': 'box'}
+            ],
+            placeholder='Choose a chart type'
+        )
+    ], style={'width': '40%', 'margin': 'auto', 'padding': '10px'}),
+    html.Div([dcc.Graph(id='graph-output')])
+])
+
+def parse_contents(contents):
+    content_type, content_string = contents.split(',')
+    decoded = base64.b64decode(content_string)
+    df = pd.read_csv(io.StringIO(decoded.decode('utf-8')))
+    df.columns = df.columns.str.strip()
+    return df
+
+@app.callback(
+    [Output('file-info', 'children'),
+     Output('data-preview', 'children'),
+     Output('x-axis', 'options'),
+     Output('y-axis', 'options')],
+    Input('upload-data', 'contents'),
+    State('upload-data', 'filename')
+)
+def update_output(contents, filename):
+    if contents is None:
+        return '', '', [], []
+    try:
+        df = parse_contents(contents)
+        options = [{'label': col, 'value': col} for col in df.select_dtypes(include=['number']).columns]
+        preview = html.Div([
+            html.H4("📄 Dataset Preview"),
+            html.P(f"Shape: {df.shape}"),
+            html.Table([
+                html.Tr([html.Th(col) for col in df.columns[:6]])
+            ] + [
+                html.Tr([html.Td(str(df.iloc[i][col])) for col in df.columns[:6]])
+                for i in range(min(len(df), 5))
+            ])
+        ], style={'textAlign': 'center', 'margin': '20px'})
+        return f"✅ File '{filename}' uploaded successfully!", preview, options, options
+    except Exception as e:
+        return f"❌ Error: {str(e)}", '', [], []
+
+@app.callback(
+    Output('graph-output', 'figure'),
+    [Input('x-axis', 'value'),
+     Input('y-axis', 'value'),
+     Input('chart-type', 'value'),
+     Input('upload-data', 'contents')]
+)
+def update_chart(x_col, y_col, chart_type, contents):
+    if contents is None or chart_type is None:
+        return px.scatter(title="Upload a CSV file and select options")
+    df = parse_contents(contents)
+    try:
+        if chart_type == 'box' and y_col is not None:
+            Q1 = df[y_col].quantile(0.25)
+            Q3 = df[y_col].quantile(0.75)
+            IQR = Q3 - Q1
+            lower_bound = Q1 - 1.5 * IQR
+            upper_bound = Q3 + 1.5 * IQR
+            df = df[(df[y_col] >= lower_bound) & (df[y_col] <= upper_bound)]
+        if chart_type == 'line':
+            fig = px.line(df, x=x_col, y=y_col, title=f"{y_col} vs {x_col} (Line Chart)")
+        elif chart_type == 'bar':
+            fig = px.bar(df, x=x_col, y=y_col, title=f"{y_col} vs {x_col} (Bar Chart)")
+        elif chart_type == 'scatter':
+            fig = px.scatter(df, x=x_col, y=y_col, title=f"{y_col} vs {x_col} (Scatter Plot)")
+        elif chart_type == 'hist':
+            fig = px.histogram(df, x=y_col, nbins=30, title=f"{y_col} Distribution (Histogram)")
+        elif chart_type == 'box':
+            fig = px.box(df, y=y_col, title=f"{y_col} (Box Plot)")
+        else:
+            fig = px.scatter(title="Select a valid chart type")
+        fig.update_layout(template="plotly_white")
+        return fig
+    except Exception as e:
+        return px.scatter(title=f"Error generating chart: {str(e)}")
+
+if __name__ == '__main__':
+    app.run(debug=True, port=8051)
