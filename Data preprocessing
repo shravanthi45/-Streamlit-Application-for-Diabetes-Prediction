@@ -1,0 +1,66 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.rcParams['font.family'] = 'Segoe UI Emoji'
+from sklearn.preprocessing import StandardScaler
+file_path = r"C:\Users\Shravanthi\Downloads\diabetes.csv"
+df = pd.read_csv(file_path)
+print("🔹 Original Diabetes Data Loaded!\n")
+print(f"Dataset shape: {df.shape}")
+print(df.head(), "\n")
+num_cols = df.select_dtypes(include=['int64', 'float64']).columns
+cat_cols = df.select_dtypes(include=['object', 'category']).columns
+print("🔢 Numeric columns:", list(num_cols))
+print("🔠 Categorical columns:", list(cat_cols), "\n")
+
+cols_with_zero_as_nan = ['Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI']
+df[cols_with_zero_as_nan] = df[cols_with_zero_as_nan].replace(0, np.nan)
+
+df[num_cols] = df[num_cols].fillna(df[num_cols].mean())
+
+print("✅ Missing values handled.\n")
+scaler = StandardScaler()
+df[num_cols] = scaler.fit_transform(df[num_cols])
+
+print("✅ Feature scaling complete.\n")
+
+def remove_outliers_iqr(data, cols):
+    cleaned_data = data.copy()
+    for col in cols:
+        Q1 = cleaned_data[col].quantile(0.25)
+        Q3 = cleaned_data[col].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_limit = Q1 - 1.5 * IQR
+        upper_limit = Q3 + 1.5 * IQR
+        cleaned_data = cleaned_data[
+            (cleaned_data[col] >= lower_limit) & (cleaned_data[col] <= upper_limit)
+        ]
+    return cleaned_data
+
+df_clean = remove_outliers_iqr(df, num_cols)
+
+print(f"🔥 Outliers removed! Clean data rows: {len(df_clean)}")
+print(f"🧮 Outlier rows removed: {len(df) - len(df_clean)}\n")
+
+plt.figure(figsize=(14, 6))
+
+plt.subplot(1, 2, 1)
+sns.boxplot(data=df[num_cols])
+plt.title("📌 BEFORE Cleaning (Outliers Present)")
+plt.xticks(rotation=45)
+plt.grid(True)
+
+plt.subplot(1, 2, 2)
+sns.boxplot(data=df_clean[num_cols], showfliers=False)
+plt.title("✅ AFTER Cleaning (Outliers Removed)")
+plt.xticks(rotation=45)
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+output_path = r"C:\Users\Shravanthi\Downloads\diabetes.csv"
+df_clean.to_csv(output_path, index=False)
+
+print(f"💾 Cleaned diabetes dataset saved successfully to: {output_path}")
+print("🌟 Diabetes Data Preprocessing & Visualization Completed! 🌟")
